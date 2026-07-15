@@ -12,7 +12,7 @@ import { InsightsView } from './components/InsightsView.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
 import { Toast, ToastType } from './components/Toast.tsx';
 
-const OnboardingGate: React.FC<{ onSignIn: () => void; loading: boolean }> = ({ onSignIn, loading }) => {
+const OnboardingGate: React.FC<{ onSignIn: () => void; onSignInAsGuest: () => void; loading: boolean }> = ({ onSignIn, onSignInAsGuest, loading }) => {
   return (
     <div className="min-h-screen bg-[#09090b] flex items-center justify-center p-6 relative overflow-hidden font-sans text-[#fafafa]">
       
@@ -74,7 +74,7 @@ const OnboardingGate: React.FC<{ onSignIn: () => void; loading: boolean }> = ({ 
         </div>
 
         {/* Action controls */}
-        <div className="pt-2">
+        <div className="pt-2 space-y-3">
           <button
             onClick={onSignIn}
             disabled={loading}
@@ -96,8 +96,22 @@ const OnboardingGate: React.FC<{ onSignIn: () => void; loading: boolean }> = ({ 
               </>
             )}
           </button>
+
+          <div className="relative flex items-center justify-center py-1">
+            <span className="absolute w-full border-t border-[#27272a]"></span>
+            <span className="relative bg-[#18181b] px-3 text-[10px] text-[#71717a] font-mono uppercase tracking-wider">or</span>
+          </div>
+
+          <button
+            onClick={onSignInAsGuest}
+            disabled={loading}
+            className="w-full py-3 px-4 bg-transparent hover:bg-[#27272a]/40 text-[#fafafa] border border-[#27272a] hover:border-[#3f3f46] font-bold text-xs tracking-wider rounded-lg transition-all cursor-pointer flex items-center justify-center gap-2 uppercase font-mono"
+          >
+            <Sparkles className="w-4 h-4 text-emerald-400" />
+            Launch OS in Guest / Demo Mode
+          </button>
           
-          <p className="text-[10px] text-center text-[#71717a] mt-4 leading-relaxed font-mono uppercase tracking-wider">
+          <p className="text-[10px] text-center text-[#71717a] pt-2 leading-relaxed font-mono uppercase tracking-wider">
             SECURED PERSISTENCE IN PRIVATE REGIONAL DATABASE (ASIA-SOUTHEAST1)
           </p>
         </div>
@@ -108,7 +122,7 @@ const OnboardingGate: React.FC<{ onSignIn: () => void; loading: boolean }> = ({ 
 };
 
 const AppContent: React.FC = () => {
-  const { firebaseUser, signIn, loading } = useAuth();
+  const { firebaseUser, signIn, signInAsGuest, loading } = useAuth();
   const [activeView, setActiveView] = useState<ViewType>('home');
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
 
@@ -137,7 +151,7 @@ const AppContent: React.FC = () => {
   }
 
   if (!firebaseUser) {
-    return <OnboardingGate onSignIn={signIn} loading={loading} />;
+    return <OnboardingGate onSignIn={signIn} onSignInAsGuest={signInAsGuest} loading={loading} />;
   }
 
   return (

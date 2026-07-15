@@ -14,6 +14,7 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   signIn: () => Promise<void>;
+  signInAsGuest: () => void;
   signOut: () => Promise<void>;
 }
 
@@ -59,9 +60,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error('Failed to retrieve ID token:', error);
         }
       } else {
-        setFirebaseUser(null);
-        setDbUser(null);
-        setToken(null);
+        const guest = localStorage.getItem('atlas_guest_user');
+        if (guest) {
+          try {
+            const parsedGuest = JSON.parse(guest);
+            parsedGuest.getIdToken = async () => 'mock_guest_token';
+            setFirebaseUser(parsedGuest);
+            setDbUser({
+              id: 1,
+              email: parsedGuest.email || 'guest.strategist@atlas.os',
+              displayName: parsedGuest.displayName || 'Guest Strategist',
+              createdAt: new Date().toISOString()
+            });
+            setToken('mock_guest_token');
+          } catch (e) {
+            setFirebaseUser(null);
+            setDbUser(null);
+            setToken(null);
+          }
+        } else {
+          setFirebaseUser(null);
+          setDbUser(null);
+          setToken(null);
+        }
       }
       setLoading(false);
     });
@@ -80,9 +101,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const signInAsGuest = () => {
+    setLoading(true);
+    const mockGuestUser = {
+      uid: 'guest_user_id_1',
+      email: 'guest.strategist@atlas.os',
+      displayName: 'Guest Strategist',
+      photoURL: 'https://api.dicebear.com/7.x/initials/svg?seed=Guest%20Strategist',
+      getIdToken: async () => 'mock_guest_token',
+    } as any as FirebaseUser;
+
+    localStorage.setItem('atlas_guest_user', JSON.stringify(mockGuestUser));
+    setFirebaseUser(mockGuestUser);
+    setDbUser({
+      id: 1,
+      email: mockGuestUser.email!,
+      displayName: mockGuestUser.displayName!,
+      createdAt: new Date().toISOString()
+    });
+    setToken('mock_guest_token');
+    setLoading(false);
+  };
+
   const signOut = async () => {
     setLoading(true);
     try {
+      localStorage.removeItem('atlas_guest_user');
       await firebaseSignOut(auth);
     } catch (error) {
       console.error('Sign out failed:', error);
@@ -92,7 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ firebaseUser, dbUser, token, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ firebaseUser, dbUser, token, loading, signIn, signInAsGuest, signOut }}>
       {children}
     </AuthContext.Provider>
   );
