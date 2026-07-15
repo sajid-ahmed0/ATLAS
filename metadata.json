@@ -1,0 +1,6 @@
+{
+  "name": "Atlas",
+  "description": "Personal AI Life Operating System for strategic decisions, journaling, alignment, and daily priorities.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
