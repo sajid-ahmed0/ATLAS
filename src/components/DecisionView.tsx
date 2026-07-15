@@ -13,8 +13,10 @@ import {
   Scale, 
   Sparkles,
   ArrowRight,
-  ChevronDown,
-  ChevronUp
+  X,
+  AlertTriangle,
+  Lightbulb,
+  CornerDownRight
 } from 'lucide-react';
 import { useAuth } from './AuthContext.tsx';
 import { Decision } from '../types.ts';
@@ -29,14 +31,16 @@ export const DecisionView: React.FC<DecisionViewProps> = ({ showToast }) => {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
   const [analyzing, setAnalyzing] = useState<boolean>(false);
-  const [viewingHistory, setViewingHistory] = useState<boolean>(true);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
   // Form Fields
   const [title, setTitle] = useState<string>('');
-  const [description, setDescription] = useState<string>('');
+  const [immediateConflict, setImmediateConflict] = useState<string>('');
+  const [fears, setFears] = useState<string>('');
+  const [context, setContext] = useState<string>('');
   const [category, setCategory] = useState<string>('Career');
   const [importance, setImportance] = useState<number>(5);
-  const [mood, setMood] = useState<string>('Neutral');
+  const [mood, setMood] = useState<string>('Clear');
   const [energy, setEnergy] = useState<string>('Medium');
   const [deadline, setDeadline] = useState<string>('');
   const [availableTime, setAvailableTime] = useState<string>('');
@@ -88,12 +92,17 @@ export const DecisionView: React.FC<DecisionViewProps> = ({ showToast }) => {
 
   const handleSubmitDecision = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !description.trim()) {
-      showToast('Please fill in the title and description.', 'error');
+    if (!title.trim() || !immediateConflict.trim()) {
+      showToast('Please fill in the title and the immediate conflict.', 'error');
       return;
     }
     setAnalyzing(true);
-    showToast('Atlas is evaluating decision criteria...', 'loading');
+    setIsModalOpen(false);
+    showToast('Atlas is evaluating decision paths...', 'loading');
+
+    // Combine conflict, fears, and context into description to feed backend cleanly
+    const combinedDescription = `Immediate Conflict: ${immediateConflict}\n\nFears: ${fears}\n\nContext: ${context}`;
+
     try {
       const response = await fetch('/api/decisions', {
         method: 'POST',
@@ -103,7 +112,7 @@ export const DecisionView: React.FC<DecisionViewProps> = ({ showToast }) => {
         },
         body: JSON.stringify({
           title,
-          description,
+          description: combinedDescription,
           category,
           importance,
           mood,
@@ -122,7 +131,9 @@ export const DecisionView: React.FC<DecisionViewProps> = ({ showToast }) => {
         
         // Reset form
         setTitle('');
-        setDescription('');
+        setImmediateConflict('');
+        setFears('');
+        setContext('');
         setImportance(5);
         setNotes('');
         setOptions([
@@ -130,8 +141,7 @@ export const DecisionView: React.FC<DecisionViewProps> = ({ showToast }) => {
           { title: 'Option B', description: '' }
         ]);
 
-        showToast('Strategic analysis complete.', 'success');
-        setViewingHistory(true); // Switch to viewing results
+        showToast('Decision paths evaluated.', 'success');
       } else {
         const errData = await response.json();
         showToast(errData.error || 'Evaluation failed.', 'error');
@@ -160,10 +170,8 @@ export const DecisionView: React.FC<DecisionViewProps> = ({ showToast }) => {
       });
 
       if (response.ok) {
-        showToast('Decision finalized.', 'success');
-        // Refresh local items
+        showToast('Choice path finalized.', 'success');
         await fetchDecisions();
-        // Update selected view
         if (selectedDecision && selectedDecision.id === decisionId) {
           const updatedSelected = {
             ...selectedDecision,
@@ -192,10 +200,9 @@ export const DecisionView: React.FC<DecisionViewProps> = ({ showToast }) => {
       });
 
       if (response.ok) {
-        setDecisions(decisions.filter(d => d.id !== id));
-        if (selectedDecision?.id === id) {
-          setSelectedDecision(decisions.find(d => d.id !== id) || null);
-        }
+        const remaining = decisions.filter(d => d.id !== id);
+        setDecisions(remaining);
+        setSelectedDecision(remaining.length > 0 ? remaining[0] : null);
         showToast('Decision analysis deleted.', 'success');
       }
     } catch (err) {
@@ -203,127 +210,514 @@ export const DecisionView: React.FC<DecisionViewProps> = ({ showToast }) => {
     }
   };
 
+  // Safe description parsing helper
+  const parseDescription = (desc: string) => {
+    let conflict = '';
+    let fearsText = '';
+    let mainContext = desc || '';
+
+    if (desc && desc.includes('Immediate Conflict:') && desc.includes('Fears:')) {
+      try {
+        const conflictIndex = desc.indexOf('Immediate Conflict:');
+        const fearsIndex = desc.indexOf('Fears:');
+        const contextIndex = desc.indexOf('Context:');
+        
+        conflict = desc.substring(conflictIndex + 'Immediate Conflict:'.length, fearsIndex).trim();
+        fearsText = desc.substring(fearsIndex + 'Fears:'.length, contextIndex !== -1 ? contextIndex : desc.length).trim();
+        if (contextIndex !== -1) {
+          mainContext = desc.substring(contextIndex + 'Context:'.length).trim();
+        } else {
+          mainContext = '';
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+    return { conflict, fears: fearsText, mainContext };
+  };
+
   return (
-    <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto text-[#fafafa] font-sans">
+    <div className="p-6 md:p-12 space-y-10 max-w-7xl mx-auto text-[#fafafa] font-sans selection:bg-white selection:text-black">
       
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#27272a] pb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-[#1c1c1e] pb-8">
         <div>
-          <h2 className="text-2xl md:text-3xl font-bold font-display tracking-tight text-white">Decision Center</h2>
-          <p className="text-sm text-[#a1a1aa] mt-1">
-            Challenge your emotional state, list choices, uncover biases, and receive high-integrity operating advice.
+          <h2 className="text-2xl md:text-3xl font-light font-display tracking-tight text-white">Decision Recommendation Center</h2>
+          <p className="text-sm text-[#71717a] mt-1.5 leading-relaxed">
+            Deconstruct complex dilemmas, expose hidden biases, and evaluate pathways with your wiser future self.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setViewingHistory(!viewingHistory)}
-            className="px-4 py-2 text-xs font-semibold bg-[#27272a] border border-[#3f3f46] hover:bg-[#27272a]/80 text-[#fafafa] rounded-lg transition-colors cursor-pointer"
-          >
-            {viewingHistory ? 'New Decision Analysis' : 'Browse Analytics History'}
-          </button>
-        </div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center justify-center gap-2 px-5 py-3 text-xs font-semibold bg-white text-black rounded-xl hover:bg-[#fafafa]/90 transition-all cursor-pointer shadow-md uppercase font-mono tracking-wider shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          Initiate Decision Evaluation
+        </button>
       </div>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      {/* Main Container Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
         
-        {/* Left Side: Decision History list (Only in viewingHistory mode) */}
-        {viewingHistory && (
-          <div className="lg:col-span-1 space-y-4">
-            <h3 className="text-xs font-bold text-[#71717a] uppercase tracking-widest">Decision Registry</h3>
-            {decisions.length === 0 ? (
-              <p className="text-xs text-[#71717a] italic">No historical decisions. Analyze one on the right.</p>
-            ) : (
-              <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-2">
-                {decisions.map((dec) => (
-                  <button
-                    key={dec.id}
-                    onClick={() => setSelectedDecision(dec)}
-                    className={`w-full text-left p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
-                      selectedDecision?.id === dec.id
-                        ? 'bg-[#18181b] border-white text-[#fafafa] font-medium shadow-md'
-                        : 'bg-[#09090b]/50 border-[#27272a] text-[#a1a1aa] hover:border-[#3f3f46]'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start gap-2 mb-1.5">
-                      <h4 className="text-sm font-semibold truncate flex-1 leading-tight">{dec.title}</h4>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase font-bold font-mono ${
-                        dec.status === 'DECIDED' ? 'bg-white text-black' : 'bg-[#27272a] text-[#a1a1aa] border border-[#3f3f46]'
-                      }`}>
-                        {dec.status}
-                      </span>
-                    </div>
-                    <p className="text-xs text-[#71717a] truncate mb-2">{dec.description}</p>
-                    <div className="flex items-center justify-between text-[10px] font-mono text-[#71717a] pt-2 border-t border-[#27272a]/40">
-                      <span>{dec.category}</span>
-                      <span>Imp: {dec.importance}/10</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {/* Left column: Decision Registry List */}
+        <div className="lg:col-span-1 space-y-4">
+          <h3 className="text-xs font-bold text-[#71717a] uppercase tracking-widest font-mono">Decision Registry</h3>
+          
+          {decisions.length === 0 ? (
+            <p className="text-xs text-[#71717a] italic p-4 bg-[#09090b]/50 border border-[#1c1c1e] rounded-xl">
+              No historical decisions recorded.
+            </p>
+          ) : (
+            <div className="space-y-3.5 max-h-[70vh] overflow-y-auto pr-1">
+              {decisions.map((dec) => (
+                <button
+                  key={dec.id}
+                  onClick={() => setSelectedDecision(dec)}
+                  className={`w-full text-left p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
+                    selectedDecision?.id === dec.id
+                      ? 'bg-[#18181b] border-white text-white font-medium shadow-md'
+                      : 'bg-[#09090b]/30 border-[#1c1c1e] text-[#a1a1aa] hover:border-[#27272a]'
+                  }`}
+                >
+                  <div className="flex justify-between items-start gap-3 mb-1.5">
+                    <h4 className="text-xs font-semibold truncate flex-1 leading-tight">{dec.title}</h4>
+                    <span className={`text-[8px] px-1.5 py-0.5 rounded uppercase font-bold font-mono tracking-wider shrink-0 ${
+                      dec.status === 'DECIDED' ? 'bg-emerald-950 text-emerald-400 border border-emerald-900' : 'bg-[#18181b] text-[#71717a] border border-[#27272a]'
+                    }`}>
+                      {dec.status}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#71717a] truncate leading-normal">
+                    {parseDescription(dec.description).conflict || dec.description}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
-        {/* Right Side / Middle Container: Main Working Pane */}
-        <div className={viewingHistory ? 'lg:col-span-3' : 'lg:col-span-4'}>
+        {/* Right column: Main Workspace Panel */}
+        <div className="lg:col-span-3 min-h-[50vh]">
           
           {/* SKELETON ANALYZING LOADER */}
           {analyzing ? (
-            <div className="p-8 bg-[#18181b] border border-[#27272a] rounded-2xl flex flex-col items-center justify-center min-h-[50vh] text-center space-y-6">
-              <Loader2 className="w-12 h-12 text-white animate-spin" />
+            <div className="p-8 bg-[#09090b] border border-[#1c1c1e] rounded-2xl flex flex-col items-center justify-center min-h-[50vh] text-center space-y-6">
+              <Loader2 className="w-10 h-10 text-white animate-spin" />
               <div className="space-y-2 max-w-md">
-                <h3 className="text-lg font-bold font-display text-white">Atlas is reasoning server-side...</h3>
-                <p className="text-sm text-[#a1a1aa] leading-relaxed">
-                  Parsing operating alignment rulebook, evaluating short-term vs long-term tradeoffs, evaluating opportunity costs, and mapping sub-conscious cognitive biases...
+                <h3 className="text-lg font-light font-display text-white">Consulting your wiser future self...</h3>
+                <p className="text-xs text-[#71717a] leading-relaxed">
+                  Atlas is aligning decision options with your personal identity blueprint, modeling opportunity costs, and uncovering sub-conscious cognitive filters.
                 </p>
               </div>
             </div>
-          ) : !viewingHistory ? (
+          ) : selectedDecision ? (
             
-            // FORM FOR CREATING NEW DECISION ANALYSIS
-            <form onSubmit={handleSubmitDecision} className="bg-[#18181b] border border-[#27272a] rounded-2xl p-6 md:p-8 space-y-6">
-              <div className="flex items-center gap-2 border-b border-[#27272a] pb-4 mb-2">
-                <Brain className="w-5 h-5 text-white" />
-                <h3 className="text-lg font-bold font-display text-white">Initiate Decision Evaluation</h3>
+            // RENDERING SELECTION DETAILS & DECISION RESULTS
+            <div className="space-y-8">
+              
+              {/* Decision Overview Card */}
+              <div className="p-6 bg-[#09090b] border border-[#1c1c1e] rounded-2xl space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-4 border-b border-[#1c1c1e]">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[9px] bg-[#1c1c1e] text-[#a1a1aa] px-2 py-0.5 rounded font-mono font-bold uppercase tracking-wider">
+                        {selectedDecision.category}
+                      </span>
+                      <span className="text-[9px] bg-[#1c1c1e] text-[#a1a1aa] px-2 py-0.5 rounded font-mono font-bold uppercase tracking-wider">
+                        Importance: {selectedDecision.importance}/10
+                      </span>
+                      <span className="text-[10px] text-[#71717a] font-mono ml-1">
+                        Logged: {new Date(selectedDecision.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-medium font-display text-white mt-1">{selectedDecision.title}</h3>
+                  </div>
+
+                  <button
+                    onClick={() => handleDeleteDecision(selectedDecision.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1c1c1e] border border-[#27272a] hover:bg-rose-950/40 hover:text-rose-400 hover:border-rose-900/30 text-[#a1a1aa] text-[10px] font-mono rounded-lg transition-all cursor-pointer uppercase tracking-wider"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Evaluation
+                  </button>
+                </div>
+
+                {/* Subsections for parseable Description (Conflict, Fears, Context) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] text-[#71717a] font-mono uppercase tracking-widest font-bold block">Immediate Conflict</span>
+                    <p className="text-xs text-[#e4e4e7] leading-relaxed italic">
+                      "{parseDescription(selectedDecision.description).conflict || selectedDecision.description}"
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] text-[#71717a] font-mono uppercase tracking-widest font-bold block">Fears & Obstacles</span>
+                    <p className="text-xs text-[#e4e4e7] leading-relaxed">
+                      {parseDescription(selectedDecision.description).fears || <span className="text-[#52525b] italic">No active fears recorded.</span>}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] text-[#71717a] font-mono uppercase tracking-widest font-bold block">Detailed Context</span>
+                    <p className="text-xs text-[#a1a1aa] leading-relaxed">
+                      {parseDescription(selectedDecision.description).mainContext || <span className="text-[#52525b] italic">No additional context.</span>}
+                    </p>
+                  </div>
+                </div>
               </div>
 
+              {/* ANALYTICAL REPORT WRAPPER */}
+              {selectedDecision.analysis ? (
+                <div className="space-y-8">
+                  
+                  {/* Executive Summary & Confidence */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    
+                    {/* Confidence gauge */}
+                    <div className="p-6 bg-[#09090b] border border-[#1c1c1e] rounded-2xl flex flex-col items-center justify-center text-center relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-full h-[3px] bg-white" />
+                      <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-[#71717a] mb-3">AI Confidence</span>
+                      <div className="relative flex items-center justify-center">
+                        <svg className="w-20 h-20 transform -rotate-90">
+                          <circle cx="40" cy="40" r="34" stroke="#18181b" strokeWidth="4" fill="transparent" />
+                          <circle cx="40" cy="40" r="34" stroke="#fafafa" strokeWidth="4" fill="transparent"
+                            strokeDasharray={`${2 * Math.PI * 34}`}
+                            strokeDashoffset={`${2 * Math.PI * 34 * (1 - selectedDecision.analysis.confidenceScore / 100)}`}
+                            className="transition-all duration-1000 ease-out"
+                          />
+                        </svg>
+                        <span className="absolute text-sm font-bold font-mono text-white">{selectedDecision.analysis.confidenceScore}%</span>
+                      </div>
+                      <span className="text-[9px] text-[#71717a] font-mono uppercase tracking-widest mt-4">Wiser alignment</span>
+                    </div>
+
+                    {/* Executive Summary */}
+                    <div className="md:col-span-3 p-6 bg-[#09090b] border border-[#1c1c1e] rounded-2xl relative overflow-hidden">
+                      <h4 className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#71717a] mb-2.5 flex items-center gap-1.5">
+                        <Compass className="w-3.5 h-3.5" />
+                        Executive Evaluation Summary
+                      </h4>
+                      <p className="text-xs text-[#a1a1aa] leading-relaxed font-sans">{selectedDecision.analysis.summary}</p>
+                    </div>
+
+                  </div>
+
+                  {/* Comparative Path Options */}
+                  <div className="p-6 bg-[#09090b] border border-[#1c1c1e] rounded-2xl space-y-4">
+                    <h4 className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#71717a] flex items-center gap-2">
+                      <Scale className="w-4 h-4 text-[#71717a]" />
+                      Option-by-Option Comparative Pros & Cons
+                    </h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {selectedDecision.analysis.prosAndCons.map((poc, idx) => {
+                        const savedOpt = selectedDecision.options.find(o => o.title.toLowerCase() === poc.optionTitle.toLowerCase() || o.title.toLowerCase().includes(poc.optionTitle.toLowerCase()));
+                        const isOptionSelected = savedOpt?.isSelected;
+                        
+                        return (
+                          <div 
+                            key={idx} 
+                            className={`p-5 rounded-xl border relative flex flex-col justify-between transition-all ${
+                              isOptionSelected 
+                                ? 'bg-white/[0.02] border-white/40 shadow-sm' 
+                                : 'bg-[#18181b]/20 border-[#1c1c1e] hover:border-[#27272a]'
+                            }`}
+                          >
+                            <div>
+                              <div className="flex justify-between items-start gap-4 mb-3 border-b border-[#1c1c1e] pb-2.5">
+                                <h5 className="text-xs font-bold text-white font-mono flex items-center gap-1.5">
+                                  <CornerDownRight className="w-3.5 h-3.5 text-[#71717a]" />
+                                  {poc.optionTitle}
+                                </h5>
+                                
+                                {savedOpt && (
+                                  selectedDecision.status !== 'DECIDED' ? (
+                                    <button
+                                      onClick={() => handleSelectOptionChoice(selectedDecision.id, savedOpt.id)}
+                                      className="text-[9px] font-bold px-2 py-1 bg-white text-black rounded hover:bg-[#fafafa]/90 transition-colors cursor-pointer uppercase font-mono tracking-wider"
+                                    >
+                                      Choose Path
+                                    </button>
+                                  ) : (
+                                    isOptionSelected && (
+                                      <span className="flex items-center gap-1 text-[8px] font-bold font-mono bg-white text-black px-2 py-0.5 rounded uppercase tracking-wider">
+                                        <Check className="w-2.5 h-2.5" />
+                                        Selected Choice
+                                      </span>
+                                    )
+                                  )
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                  <span className="block text-[9px] font-mono font-bold uppercase text-emerald-400">Pros</span>
+                                  <ul className="space-y-1">
+                                    {poc.pros.map((p, i) => (
+                                      <li key={i} className="text-[11px] text-[#a1a1aa] leading-relaxed flex items-start gap-1.5">
+                                        <span className="text-emerald-500 text-[10px] mt-0.5">•</span>
+                                        {p}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <span className="block text-[9px] font-mono font-bold uppercase text-rose-400">Cons</span>
+                                  <ul className="space-y-1">
+                                    {poc.cons.map((c, i) => (
+                                      <li key={i} className="text-[11px] text-[#a1a1aa] leading-relaxed flex items-start gap-1.5">
+                                        <span className="text-rose-400 text-[10px] mt-0.5">•</span>
+                                        {c}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Impact Columns (Short vs Long Term) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="p-5 bg-[#09090b] border border-[#1c1c1e] rounded-2xl">
+                      <span className="block text-[9px] font-mono font-bold uppercase tracking-widest text-[#71717a] mb-2">Short-Term Strategic Impact (1-90 Days)</span>
+                      <p className="text-xs text-[#a1a1aa] leading-relaxed">{selectedDecision.analysis.shortTermImpact}</p>
+                    </div>
+
+                    <div className="p-5 bg-[#09090b] border border-[#1c1c1e] rounded-2xl">
+                      <span className="block text-[9px] font-mono font-bold uppercase tracking-widest text-[#71717a] mb-2">Long-Term Lifespan Alignment (1-5 Years)</span>
+                      <p className="text-xs text-[#a1a1aa] leading-relaxed">{selectedDecision.analysis.longTermImpact}</p>
+                    </div>
+                  </div>
+
+                  {/* Risks & Cognitive Filters */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    
+                    {/* Vulnerabilities */}
+                    <div className="p-5 bg-[#09090b] border border-[#1c1c1e] rounded-2xl">
+                      <div className="flex items-center gap-2 mb-2">
+                        <ShieldAlert className="w-4 h-4 text-rose-400" />
+                        <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-[#71717a]">Potential Vulnerabilities & Risks</span>
+                      </div>
+                      <p className="text-xs text-[#a1a1aa] leading-relaxed">{selectedDecision.analysis.potentialRisks}</p>
+                    </div>
+
+                    {/* Cognitive Biases Detected */}
+                    <div className="p-5 bg-[#09090b] border border-[#1c1c1e] rounded-2xl">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Bookmark className="w-4 h-4 text-[#a1a1aa]" />
+                        <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-[#71717a]">Sub-conscious Cognitive Biases</span>
+                      </div>
+                      <p className="text-xs text-[#a1a1aa] leading-relaxed">{selectedDecision.analysis.cognitiveBiases}</p>
+                    </div>
+
+                  </div>
+
+                  {/* Deep Paradigm Challenge Questions */}
+                  <div className="p-5 bg-[#09090b] border border-[#1c1c1e] rounded-2xl space-y-3">
+                    <span className="block text-[9px] font-mono font-bold uppercase tracking-widest text-[#71717a] flex items-center gap-1.5">
+                      <HelpCircle className="w-3.5 h-3.5" />
+                      Paradigm Challenge Questions
+                    </span>
+                    
+                    {selectedDecision.analysis.questionsNotConsidered && selectedDecision.analysis.questionsNotConsidered.length > 0 ? (
+                      <ul className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {selectedDecision.analysis.questionsNotConsidered.map((q, idx) => (
+                          <li key={idx} className="text-xs text-[#a1a1aa] leading-relaxed flex items-start gap-2.5 bg-[#18181b]/30 p-3 rounded-lg border border-[#1c1c1e]">
+                            <span className="font-mono font-bold text-white text-[10px]">0{idx + 1}.</span>
+                            <span className="italic">"{q}"</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-[#71717a] italic">No challenge parameters mapped.</p>
+                    )}
+                  </div>
+
+                  {/* PREMIUM RECOMMENDATION CONTAINER WITH THE UPDATED STRUCTURE */}
+                  <div className="p-6 bg-gradient-to-br from-[#18181b] to-[#09090b] border border-white/20 rounded-2xl relative overflow-hidden space-y-6">
+                    <div className="absolute top-0 right-0 p-4 opacity-[0.03] pointer-events-none">
+                      <Sparkles className="w-40 h-40 text-white" />
+                    </div>
+                    
+                    <div className="flex items-center gap-2 text-white pb-3 border-b border-[#27272a]">
+                      <Sparkles className="w-4.5 h-4.5 text-white" />
+                      <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Decision Recommendation & Tradeoffs</span>
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* Main Recommended Route */}
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-mono uppercase text-emerald-400 font-bold tracking-wider">Recommended Pathway</span>
+                        <h3 className="text-lg font-bold font-display text-white leading-snug">
+                          {selectedDecision.analysis.recommendation}
+                        </h3>
+                      </div>
+
+                      {/* Mentor Reasoning */}
+                      <div className="space-y-1.5 pt-2">
+                        <span className="text-[9px] font-mono uppercase text-[#71717a] font-bold tracking-wider block">Mentor Reasoning & Insight</span>
+                        <p className="text-xs text-[#a1a1aa] leading-relaxed font-sans bg-[#09090b]/40 p-3.5 rounded-xl border border-[#27272a]">
+                          {selectedDecision.analysis.reasoning}
+                        </p>
+                      </div>
+
+                      {/* Opportunity Cost & Alternative Solution row */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                        <div className="p-3 bg-amber-950/20 rounded-lg border border-amber-900/30">
+                          <span className="flex items-center gap-1 text-[9px] font-mono uppercase text-amber-500 font-bold tracking-wider mb-1">
+                            <Flame className="w-3 h-3 text-amber-500" />
+                            Opportunity Cost
+                          </span>
+                          <p className="text-xs text-[#a1a1aa] leading-relaxed">
+                            {selectedDecision.analysis.opportunityCost}
+                          </p>
+                        </div>
+
+                        <div className="p-3 bg-blue-950/20 rounded-lg border border-blue-900/30">
+                          <span className="flex items-center gap-1 text-[9px] font-mono uppercase text-blue-400 font-bold tracking-wider mb-1">
+                            <Lightbulb className="w-3 h-3 text-blue-400" />
+                            Alternative Path Choice
+                          </span>
+                          <p className="text-xs text-[#a1a1aa] leading-relaxed">
+                            {selectedDecision.analysis.alternativeSolutions}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              ) : (
+                <div className="py-12 text-center text-[#71717a]">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+                  <p className="text-xs uppercase tracking-wider font-mono">Calculating insights...</p>
+                </div>
+              )}
+
+            </div>
+          ) : (
+            
+            // THE REQUESTED CUSTOM EMPTY STATE WITH BRANCHING PATH ILLUSTRATION
+            <div className="py-16 px-6 text-center border border-dashed border-[#1c1c1e] rounded-2xl flex flex-col items-center justify-center min-h-[50vh] space-y-6">
+              
+              {/* Custom Branching Paths CSS/SVG Illustration */}
+              <div className="w-24 h-24 relative flex items-center justify-center bg-[#09090b] rounded-full border border-[#1c1c1e]">
+                <svg className="w-14 h-14 text-[#71717a]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22V12" />
+                  <path d="M12 12C12 9.5 9.5 7 6 7" />
+                  <path d="M12 12C12 9.5 14.5 7 18 7" />
+                  <path d="M6 7V2" />
+                  <path d="M18 7V2" />
+                  <circle cx="6" cy="2" r="1.5" className="fill-current text-[#71717a]" />
+                  <circle cx="18" cy="2" r="1.5" className="fill-current text-[#71717a]" />
+                  <circle cx="12" cy="22" r="1.5" className="fill-current text-[#71717a]" />
+                </svg>
+              </div>
+
+              <div className="space-y-2 max-w-sm">
+                <h3 className="text-md font-semibold text-white">No Decision Selected</h3>
+                <p className="text-xs text-[#71717a] leading-relaxed">
+                  "The best way to make a hard choice is to bring it to your wiser future self." Select a dilemma from the registry or begin evaluating a new choice path.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="px-4 py-2 text-xs font-bold bg-white text-black hover:bg-[#fafafa]/90 rounded-xl transition-all cursor-pointer uppercase font-mono tracking-wider shadow-sm"
+              >
+                Initiate Decision Evaluation
+              </button>
+            </div>
+          )}
+
+        </div>
+
+      </div>
+
+      {/* EVALUATION MODAL FORM */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-3xl max-h-[90vh] bg-[#09090b] border border-[#27272a] rounded-2xl overflow-y-auto shadow-2xl p-6 md:p-8 space-y-6">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-[#1c1c1e] pb-4">
+              <div className="flex items-center gap-2">
+                <Brain className="w-5 h-5 text-white" />
+                <h3 className="text-lg font-light font-display text-white">Initiate Decision Evaluation</h3>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-[#71717a] hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSubmitDecision} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
-                {/* Column 1: Core details */}
-                <div className="space-y-5">
+                {/* Column 1: Core Details */}
+                <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-mono text-[#a1a1aa] uppercase tracking-wider mb-2 font-bold">Decision Title</label>
+                    <label className="block text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider mb-1.5 font-bold">Decision Title</label>
                     <input
                       type="text"
                       required
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      placeholder="e.g. Choose whether to accept offer from TechCorp or stay freelance"
-                      className="w-full px-4 py-2.5 bg-[#09090b] border border-[#27272a] rounded-xl text-sm text-[#fafafa] placeholder-[#71717a] focus:outline-none focus:border-[#3f3f46]"
+                      placeholder="e.g. Accept Full-Time TechCorp position"
+                      className="w-full px-3 py-2 bg-[#18181b]/50 border border-[#27272a] rounded-xl text-xs text-[#fafafa] placeholder-[#52525b] focus:outline-none focus:border-[#3f3f46]"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-mono text-[#a1a1aa] uppercase tracking-wider mb-2 font-bold">Comprehensive Description</label>
+                    <label className="block text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider mb-1.5 font-bold">Immediate Conflict</label>
                     <textarea
                       required
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Contextualize the dilemma. What is the immediate conflict? What are your fears?"
-                      rows={4}
-                      className="w-full px-4 py-2.5 bg-[#09090b] border border-[#27272a] rounded-xl text-sm text-[#fafafa] placeholder-[#71717a] focus:outline-none focus:border-[#3f3f46]"
+                      value={immediateConflict}
+                      onChange={(e) => setImmediateConflict(e.target.value)}
+                      placeholder="What is the active clash? e.g. 'Should I accept job or freelance?'"
+                      rows={2.5}
+                      className="w-full px-3 py-2 bg-[#18181b]/50 border border-[#27272a] rounded-xl text-xs text-[#fafafa] placeholder-[#52525b] focus:outline-none focus:border-[#3f3f46] leading-relaxed"
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider mb-1.5 font-bold">Fears & Blockers</label>
+                    <textarea
+                      value={fears}
+                      onChange={(e) => setFears(e.target.value)}
+                      placeholder="What are you afraid of losing? What worst-case scenarios stall you?"
+                      rows={2.5}
+                      className="w-full px-3 py-2 bg-[#18181b]/50 border border-[#27272a] rounded-xl text-xs text-[#fafafa] placeholder-[#52525b] focus:outline-none focus:border-[#3f3f46] leading-relaxed"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider mb-1.5 font-bold">Detailed Context & Nuance</label>
+                    <textarea
+                      value={context}
+                      onChange={(e) => setContext(e.target.value)}
+                      placeholder="Supplementary metadata, other options context, pressure points..."
+                      rows={2.5}
+                      className="w-full px-3 py-2 bg-[#18181b]/50 border border-[#27272a] rounded-xl text-xs text-[#fafafa] placeholder-[#52525b] focus:outline-none focus:border-[#3f3f46] leading-relaxed"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-mono text-[#a1a1aa] uppercase tracking-wider mb-2 font-bold">Category</label>
+                      <label className="block text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider mb-1.5 font-bold">Category</label>
                       <select
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-[#09090b] border border-[#27272a] rounded-xl text-sm text-[#fafafa] focus:outline-none focus:border-[#3f3f46]"
+                        className="w-full px-3 py-2 bg-[#18181b]/50 border border-[#27272a] rounded-xl text-xs text-[#fafafa] focus:outline-none focus:border-[#3f3f46]"
                       >
                         {['Career', 'Finance', 'Lifestyle', 'Relationship', 'Health', 'General'].map(cat => (
                           <option key={cat} value={cat}>{cat}</option>
@@ -331,25 +725,25 @@ export const DecisionView: React.FC<DecisionViewProps> = ({ showToast }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-mono text-[#a1a1aa] uppercase tracking-wider mb-2 font-bold">Importance (1-10)</label>
+                      <label className="block text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider mb-1.5 font-bold">Importance (1-10)</label>
                       <input
                         type="number"
                         min="1"
                         max="10"
                         value={importance}
                         onChange={(e) => setImportance(parseInt(e.target.value))}
-                        className="w-full px-4 py-2.5 bg-[#09090b] border border-[#27272a] rounded-xl text-sm text-[#fafafa] focus:outline-none focus:border-[#3f3f46] font-mono"
+                        className="w-full px-3 py-2 bg-[#18181b]/50 border border-[#27272a] rounded-xl text-xs text-[#fafafa] focus:outline-none focus:border-[#3f3f46] font-mono"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-mono text-[#a1a1aa] uppercase tracking-wider mb-2 font-bold">Emotional Mood</label>
+                      <label className="block text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider mb-1.5 font-bold">Emotional Mood</label>
                       <select
                         value={mood}
                         onChange={(e) => setMood(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-[#09090b] border border-[#27272a] rounded-xl text-sm text-[#fafafa] focus:outline-none focus:border-[#3f3f46]"
+                        className="w-full px-3 py-2 bg-[#18181b]/50 border border-[#27272a] rounded-xl text-xs text-[#fafafa] focus:outline-none focus:border-[#3f3f46]"
                       >
                         {['Clear', 'Anxious', 'Fatigued', 'Inspired', 'Overwhelmed', 'Neutral'].map(m => (
                           <option key={m} value={m}>{m}</option>
@@ -357,11 +751,11 @@ export const DecisionView: React.FC<DecisionViewProps> = ({ showToast }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-mono text-[#a1a1aa] uppercase tracking-wider mb-2 font-bold">Energy Level</label>
+                      <label className="block text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider mb-1.5 font-bold">Energy Level</label>
                       <select
                         value={energy}
                         onChange={(e) => setEnergy(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-[#09090b] border border-[#27272a] rounded-xl text-sm text-[#fafafa] focus:outline-none focus:border-[#3f3f46]"
+                        className="w-full px-3 py-2 bg-[#18181b]/50 border border-[#27272a] rounded-xl text-xs text-[#fafafa] focus:outline-none focus:border-[#3f3f46]"
                       >
                         {['High', 'Medium', 'Low'].map(e => (
                           <option key={e} value={e}>{e}</option>
@@ -369,94 +763,57 @@ export const DecisionView: React.FC<DecisionViewProps> = ({ showToast }) => {
                       </select>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-mono text-[#a1a1aa] uppercase tracking-wider mb-2 font-bold">Deadline</label>
-                      <input
-                        type="text"
-                        value={deadline}
-                        onChange={(e) => setDeadline(e.target.value)}
-                        placeholder="e.g. Next Friday"
-                        className="w-full px-4 py-2.5 bg-[#09090b] border border-[#27272a] rounded-xl text-sm text-[#fafafa] placeholder-[#71717a] focus:outline-none focus:border-[#3f3f46]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-mono text-[#a1a1aa] uppercase tracking-wider mb-2 font-bold">Time Available</label>
-                      <input
-                        type="text"
-                        value={availableTime}
-                        onChange={(e) => setAvailableTime(e.target.value)}
-                        placeholder="e.g. 10 hours of research"
-                        className="w-full px-4 py-2.5 bg-[#09090b] border border-[#27272a] rounded-xl text-sm text-[#fafafa] placeholder-[#71717a] focus:outline-none focus:border-[#3f3f46]"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-mono text-[#a1a1aa] uppercase tracking-wider mb-2 font-bold">Additional Notes / Nuances</label>
-                    <textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Add supplementary links, options metadata, or external pressures..."
-                      rows={2.5}
-                      className="w-full px-4 py-2.5 bg-[#09090b] border border-[#27272a] rounded-xl text-sm text-[#fafafa] placeholder-[#71717a] focus:outline-none focus:border-[#3f3f46]"
-                    />
-                  </div>
                 </div>
 
-                {/* Column 2: Dynamically added Options */}
-                <div className="space-y-5 bg-[#09090b] p-5 border border-[#27272a] rounded-xl">
-                  <div className="flex items-center justify-between border-b border-[#27272a] pb-3 mb-2">
-                    <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#a1a1aa]">Alternative Paths ({options.length})</span>
+                {/* Column 2: Alternative Options paths */}
+                <div className="space-y-4 bg-[#18181b]/40 p-4 border border-[#1c1c1e] rounded-xl">
+                  <div className="flex items-center justify-between border-b border-[#1c1c1e] pb-2.5">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#a1a1aa]">Alternative Paths ({options.length})</span>
                     <button
                       type="button"
                       onClick={handleAddOption}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold bg-[#18181b] border border-[#27272a] hover:bg-[#27272a] text-white rounded-lg transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-[#18181b] border border-[#27272a] hover:bg-[#27272a] text-white rounded-lg transition-colors cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       Add Option
                     </button>
                   </div>
 
-                  <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-1">
+                  <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
                     {options.map((opt, idx) => (
-                      <div key={idx} className="p-4 bg-[#18181b] border border-[#27272a] rounded-xl space-y-3 relative group">
-                        
-                        {/* Remove Option Button */}
+                      <div key={idx} className="p-4 bg-[#09090b]/50 border border-[#27272a] rounded-xl space-y-3 relative group">
                         {options.length > 1 && (
                           <button
                             type="button"
                             onClick={() => handleRemoveOption(idx)}
                             className="absolute top-3 right-3 text-[#71717a] hover:text-rose-400 transition-colors cursor-pointer"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
 
                         <div>
-                          <label className="block text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider mb-1 font-bold">Option {String.fromCharCode(65 + idx)} Title</label>
+                          <label className="block text-[9px] font-mono text-[#a1a1aa] uppercase mb-1 font-bold">Option {String.fromCharCode(65 + idx)} Title</label>
                           <input
                             type="text"
                             required
                             value={opt.title}
                             onChange={(e) => handleOptionChange(idx, 'title', e.target.value)}
-                            placeholder="e.g. Accept Full-Time position"
-                            className="w-full px-3 py-1.5 text-xs bg-[#09090b] border border-[#27272a] rounded-lg text-[#fafafa] placeholder-[#71717a] focus:outline-none focus:border-[#3f3f46]"
+                            placeholder="e.g. Option title"
+                            className="w-full px-2.5 py-1.5 text-xs bg-[#18181b]/50 border border-[#27272a] rounded-lg text-white focus:outline-none focus:border-[#3f3f46]"
                           />
                         </div>
 
                         <div>
-                          <label className="block text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider mb-1 font-bold">Description / Tradeoffs</label>
+                          <label className="block text-[9px] font-mono text-[#a1a1aa] uppercase mb-1 font-bold">Tradeoffs / Impact</label>
                           <textarea
                             value={opt.description}
                             onChange={(e) => handleOptionChange(idx, 'description', e.target.value)}
-                            placeholder="Describe what occurs if you take this path."
+                            placeholder="What happens if you take this route?"
                             rows={2}
-                            className="w-full px-3 py-1.5 text-xs bg-[#09090b] border border-[#27272a] rounded-lg text-[#fafafa] placeholder-[#71717a] focus:outline-none focus:border-[#3f3f46]"
+                            className="w-full px-2.5 py-1.5 text-xs bg-[#18181b]/50 border border-[#27272a] rounded-lg text-white focus:outline-none focus:border-[#3f3f46]"
                           />
                         </div>
-
                       </div>
                     ))}
                   </div>
@@ -464,283 +821,50 @@ export const DecisionView: React.FC<DecisionViewProps> = ({ showToast }) => {
 
               </div>
 
-              <div className="flex justify-end pt-4 border-t border-[#27272a]">
+              {/* Extra inputs row */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-[#1c1c1e] pt-4">
+                <div>
+                  <label className="block text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider mb-1">Imminent Deadline</label>
+                  <input
+                    type="text"
+                    value={deadline}
+                    onChange={(e) => setDeadline(e.target.value)}
+                    placeholder="e.g. Friday 5 PM, or None"
+                    className="w-full px-3 py-2 bg-[#18181b]/50 border border-[#27272a] rounded-xl text-xs text-[#fafafa] placeholder-[#52525b] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider mb-1">Time/Energy Available to Decide</label>
+                  <input
+                    type="text"
+                    value={availableTime}
+                    onChange={(e) => setAvailableTime(e.target.value)}
+                    placeholder="e.g. 2 hours of contemplation"
+                    className="w-full px-3 py-2 bg-[#18181b]/50 border border-[#27272a] rounded-xl text-xs text-[#fafafa] placeholder-[#52525b] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-[#1c1c1e]">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 bg-[#18181b] border border-[#27272a] hover:bg-[#27272a] text-xs font-semibold rounded-lg text-white cursor-pointer uppercase font-mono tracking-wider"
+                >
+                  Cancel
+                </button>
                 <button
                   type="submit"
-                  className="px-6 py-3 bg-white text-black font-bold text-xs rounded-xl hover:bg-[#fafafa]/90 shadow-lg transition-all cursor-pointer"
+                  className="px-5 py-2 bg-white text-black font-semibold text-xs rounded-lg hover:bg-[#fafafa]/90 cursor-pointer uppercase font-mono tracking-wider shadow-sm"
                 >
-                  Analyze & Reason With Atlas AI
+                  Consult Atlas AI
                 </button>
               </div>
             </form>
-          ) : (
-            
-            // RENDERING SELECTION DETAILS & DECISION RESULTS
-            selectedDecision ? (
-              <div className="space-y-6">
-                
-                {/* Top overview card */}
-                <div className="p-6 bg-[#18181b] border border-[#27272a] rounded-2xl">
-                  <div className="flex flex-col md:flex-row justify-between items-start gap-4 mb-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2.5 flex-wrap">
-                        <span className="text-[10px] bg-[#09090b] border border-[#27272a] text-[#a1a1aa] px-2 py-0.5 rounded uppercase font-mono font-bold tracking-wider">
-                          {selectedDecision.category}
-                        </span>
-                        <span className="text-[10px] bg-[#09090b] border border-[#27272a] text-[#a1a1aa] px-2 py-0.5 rounded font-mono font-bold">
-                          Importance: {selectedDecision.importance}/10
-                        </span>
-                        <span className="text-[#27272a] font-mono text-xs">•</span>
-                        <span className="text-[10px] text-[#71717a] font-mono">Created: {new Date(selectedDecision.createdAt).toLocaleDateString()}</span>
-                      </div>
-                      <h3 className="text-xl md:text-2xl font-bold font-display text-white mt-1">{selectedDecision.title}</h3>
-                    </div>
 
-                    <button
-                      onClick={() => handleDeleteDecision(selectedDecision.id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[#09090b] border border-[#27272a] hover:bg-rose-950/40 hover:text-rose-400 hover:border-rose-500/20 text-[#a1a1aa] text-xs rounded-lg transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Delete Analysis
-                    </button>
-                  </div>
-
-                  <p className="text-sm text-[#a1a1aa] leading-relaxed bg-[#09090b] p-4 rounded-xl border border-[#27272a]">{selectedDecision.description}</p>
-                </div>
-
-                {/* ANALYTICAL REPORT WRAPPER */}
-                {selectedDecision.analysis ? (
-                  <div className="space-y-6">
-                    
-                    {/* Executive Summary & Confidence Gauge */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                      
-                      {/* confidence Gauge */}
-                      <div className="p-6 bg-[#18181b] border border-[#27272a] rounded-2xl flex flex-col items-center justify-center text-center relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-1 bg-white" />
-                        <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#71717a] mb-3">AI Confidence</span>
-                        <div className="relative flex items-center justify-center">
-                          {/* Circle Progress bar */}
-                          <svg className="w-24 h-24 transform -rotate-90">
-                            <circle cx="48" cy="48" r="40" stroke="#09090b" strokeWidth="6" fill="transparent" />
-                            <circle cx="48" cy="48" r="40" stroke="#fafafa" strokeWidth="6" fill="transparent"
-                              strokeDasharray={`${2 * Math.PI * 40}`}
-                              strokeDashoffset={`${2 * Math.PI * 40 * (1 - selectedDecision.analysis.confidenceScore / 100)}`}
-                              className="transition-all duration-1000 ease-out"
-                            />
-                          </svg>
-                          <span className="absolute text-xl font-bold font-mono text-white">{selectedDecision.analysis.confidenceScore}%</span>
-                        </div>
-                        <span className="text-[10px] text-[#71717a] font-mono uppercase tracking-widest mt-4">Confidence Index</span>
-                      </div>
-
-                      {/* Executive Summary text */}
-                      <div className="md:col-span-3 p-6 bg-[#18181b] border border-[#27272a] rounded-2xl relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
-                          <Compass className="w-24 h-24 text-white" />
-                        </div>
-                        <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-white mb-2 flex items-center gap-1.5">
-                          <Compass className="w-3.5 h-3.5" />
-                          Executive Evaluation Summary
-                        </h4>
-                        <p className="text-sm text-[#a1a1aa] leading-relaxed font-sans">{selectedDecision.analysis.summary}</p>
-                      </div>
-
-                    </div>
-
-                    {/* Dynamic Path Options Comparison */}
-                    <div className="p-6 bg-[#18181b] border border-[#27272a] rounded-2xl">
-                      <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-[#71717a] mb-4 flex items-center gap-1.5">
-                        <Scale className="w-3.5 h-3.5 text-[#71717a]" />
-                        Option-by-Option Comparative Pros & Cons
-                      </h4>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {selectedDecision.analysis.prosAndCons.map((poc, idx) => {
-                          // Find corresponding option if saved
-                          const savedOpt = selectedDecision.options.find(o => o.title.toLowerCase() === poc.optionTitle.toLowerCase() || o.title.toLowerCase().includes(poc.optionTitle.toLowerCase()));
-                          const isOptionSelected = savedOpt?.isSelected;
-                          
-                          return (
-                            <div 
-                              key={idx} 
-                              className={`p-5 rounded-xl border relative flex flex-col justify-between ${
-                                isOptionSelected 
-                                  ? 'bg-white/[0.03] border-white/40' 
-                                  : 'bg-[#09090b]/40 border-[#27272a]'
-                              }`}
-                            >
-                              <div>
-                                <div className="flex justify-between items-start gap-4 mb-3 border-b border-[#27272a] pb-2.5">
-                                  <h5 className="text-sm font-bold text-white">{poc.optionTitle}</h5>
-                                  
-                                  {/* Select this option Button */}
-                                  {savedOpt && (
-                                    selectedDecision.status !== 'DECIDED' ? (
-                                      <button
-                                        onClick={() => handleSelectOptionChoice(selectedDecision.id, savedOpt.id)}
-                                        className="text-[10px] font-bold px-2 py-1 bg-white text-black rounded hover:bg-[#fafafa]/90 transition-colors cursor-pointer"
-                                      >
-                                        Choose Path
-                                      </button>
-                                    ) : (
-                                      isOptionSelected && (
-                                        <span className="flex items-center gap-1 text-[10px] font-bold font-mono bg-white text-black px-2 py-0.5 rounded">
-                                          <Check className="w-3 h-3" />
-                                          Selected Choice
-                                        </span>
-                                      )
-                                    )
-                                  )}
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <div className="space-y-1.5">
-                                    <span className="block text-[10px] font-mono font-bold uppercase text-emerald-400">Pros</span>
-                                    <ul className="space-y-1">
-                                      {poc.pros.map((p, i) => (
-                                        <li key={i} className="text-xs text-[#a1a1aa] leading-snug flex items-start gap-1.5">
-                                          <span className="text-emerald-500 text-[10px] mt-0.5">•</span>
-                                          {p}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                  <div className="space-y-1.5">
-                                    <span className="block text-[10px] font-mono font-bold uppercase text-rose-400">Cons</span>
-                                    <ul className="space-y-1">
-                                      {poc.cons.map((c, i) => (
-                                        <li key={i} className="text-xs text-[#a1a1aa] leading-snug flex items-start gap-1.5">
-                                          <span className="text-rose-400 text-[10px] mt-0.5">•</span>
-                                          {c}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Strategic Impact columns */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      
-                      {/* Short Term Impact */}
-                      <div className="p-5 bg-[#18181b] border border-[#27272a] rounded-2xl">
-                        <span className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#71717a] mb-2">Short-Term Strategic Impact (1-90 Days)</span>
-                        <p className="text-xs text-[#a1a1aa] leading-relaxed">{selectedDecision.analysis.shortTermImpact}</p>
-                      </div>
-
-                      {/* Long Term Impact */}
-                      <div className="p-5 bg-[#18181b] border border-[#27272a] rounded-2xl">
-                        <span className="block text-[10px] font-mono font-bold uppercase tracking-wider text-white mb-2">Long-Term Lifespan Alignment (1-5 Years)</span>
-                        <p className="text-xs text-[#a1a1aa] leading-relaxed">{selectedDecision.analysis.longTermImpact}</p>
-                      </div>
-
-                    </div>
-
-                    {/* Risks, Opportunity Cost & Biases */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      
-                      {/* Opportunity Cost */}
-                      <div className="p-5 bg-[#18181b] border border-[#27272a] rounded-2xl">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Flame className="w-4 h-4 text-amber-400" />
-                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#71717a]">Opportunity Cost</span>
-                        </div>
-                        <p className="text-xs text-[#a1a1aa] leading-relaxed">{selectedDecision.analysis.opportunityCost}</p>
-                      </div>
-
-                      {/* Potential Risks */}
-                      <div className="p-5 bg-[#18181b] border border-[#27272a] rounded-2xl">
-                        <div className="flex items-center gap-2 mb-2">
-                          <ShieldAlert className="w-4 h-4 text-rose-400" />
-                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#71717a]">Potential Vulnerabilities</span>
-                        </div>
-                        <p className="text-xs text-[#a1a1aa] leading-relaxed">{selectedDecision.analysis.potentialRisks}</p>
-                      </div>
-
-                      {/* Cognitive Biases Detected */}
-                      <div className="p-5 bg-[#18181b] border border-[#27272a] rounded-2xl">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Bookmark className="w-4 h-4 text-white" />
-                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#71717a]">Sub-conscious Cognitive Biases</span>
-                        </div>
-                        <p className="text-xs text-[#a1a1aa] leading-relaxed">{selectedDecision.analysis.cognitiveBiases}</p>
-                      </div>
-
-                    </div>
-
-                    {/* Challenge Questions & Alternative Option */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      
-                      {/* Questions Not Considered */}
-                      <div className="p-5 bg-[#18181b] border border-[#27272a] rounded-2xl space-y-3">
-                        <span className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#71717a] flex items-center gap-1.5">
-                          <HelpCircle className="w-3.5 h-3.5" />
-                          Paradigm Challenge Questions
-                        </span>
-                        
-                        {selectedDecision.analysis.questionsNotConsidered && selectedDecision.analysis.questionsNotConsidered.length > 0 ? (
-                          <ul className="space-y-2">
-                            {selectedDecision.analysis.questionsNotConsidered.map((q, idx) => (
-                              <li key={idx} className="text-xs text-[#a1a1aa] leading-relaxed flex items-start gap-2.5 bg-[#09090b]/50 p-2.5 rounded-lg border border-[#27272a]">
-                                <span className="font-mono font-bold text-white">0{idx + 1}.</span>
-                                <span className="italic">"{q}"</span>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-xs text-[#71717a] italic">No alternative challenge parameters mapped.</p>
-                        )}
-                      </div>
-
-                      {/* Alternative solution */}
-                      <div className="p-5 bg-[#18181b] border border-[#27272a] rounded-2xl">
-                        <span className="block text-[10px] font-mono font-bold uppercase tracking-wider text-white mb-2">Out-Of-The-Box Alternative Solution</span>
-                        <p className="text-xs text-[#a1a1aa] leading-relaxed bg-[#09090b]/50 p-3 rounded-lg border border-[#27272a]">{selectedDecision.analysis.alternativeSolutions}</p>
-                      </div>
-
-                    </div>
-
-                    {/* Final Recommendation */}
-                    <div className="p-6 bg-gradient-to-br from-[#18181b] to-[#09090b] border border-[#27272a] rounded-2xl relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
-                        <Sparkles className="w-24 h-24 text-white" />
-                      </div>
-                      
-                      <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-white mb-3 flex items-center gap-1.5">
-                        <Sparkles className="w-4 h-4" />
-                        Final Strategic Life Recommendation
-                      </h4>
-                      <h3 className="text-lg font-bold font-display text-white mb-2">{selectedDecision.analysis.recommendation}</h3>
-                      <p className="text-xs text-[#a1a1aa] leading-relaxed border-t border-[#27272a] pt-3">{selectedDecision.analysis.reasoning}</p>
-                    </div>
-
-                  </div>
-                ) : (
-                  <div className="py-12 text-center text-[#71717a]">
-                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-                    <p className="text-sm">Calculating analysis results...</p>
-                  </div>
-                )}
-
-              </div>
-            ) : (
-              <div className="py-12 text-center text-[#71717a] border border-dashed border-[#27272a] rounded-xl">
-                <Brain className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">Please select a decision analysis from the left panel, or trigger a new analysis.</p>
-              </div>
-            )
-
-          )}
-
+          </div>
         </div>
-
-      </div>
+      )}
 
     </div>
   );

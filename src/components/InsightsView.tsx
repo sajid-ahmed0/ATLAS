@@ -90,7 +90,7 @@ export const InsightsView: React.FC = () => {
     return (
       <div className="p-12 flex flex-col items-center justify-center min-h-[60vh] space-y-3">
         <Loader2 className="w-8 h-8 text-white animate-spin" />
-        <p className="text-xs text-[#71717a] font-mono uppercase tracking-widest">Compiling strategic intelligence telemetry...</p>
+        <p className="text-xs text-[#71717a] font-mono uppercase tracking-widest">Reviewing personal patterns...</p>
       </div>
     );
   }
@@ -132,9 +132,9 @@ export const InsightsView: React.FC = () => {
       
       {/* Header */}
       <div className="border-b border-[#27272a] pb-6">
-        <h2 className="text-2xl md:text-3xl font-bold font-display tracking-tight text-white">Insights & Strategic Analytics</h2>
-        <p className="text-sm text-[#a1a1aa] mt-1">
-          Review dynamic patterns, trace emotional fluctuations, and track metrics designed to reduce decision biases.
+        <h2 className="text-2xl md:text-3xl font-light font-display tracking-tight text-white">Insights & Personal Patterns</h2>
+        <p className="text-sm text-[#a1a1aa] mt-1.5 leading-relaxed">
+          Observe your trends, trace emotional rhythms, and understand how to refine your daily decision parameters.
         </p>
       </div>
 
@@ -157,7 +157,7 @@ export const InsightsView: React.FC = () => {
           <div className="absolute top-0 left-0 w-full h-[3px] bg-[#a1a1aa]" />
           <div className="flex items-center gap-3 text-[#71717a] mb-2">
             <BookOpen className="w-4 h-4 text-[#a1a1aa]" />
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">Calibration Days</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">Reflection Days</span>
           </div>
           <p className="text-2xl font-bold font-display text-white">{data.journalEntriesCount}</p>
           <span className="text-[10px] text-[#71717a] font-mono mt-1 block">Lessons logged</span>
@@ -189,11 +189,11 @@ export const InsightsView: React.FC = () => {
 
       </div>
 
-      {/* LINE CHART: EMOTIONAL & COGNITIVE TELEMETRY */}
+      {/* LINE CHART: EMOTIONAL & FOCUS TRENDS */}
       <div className="p-6 bg-[#18181b] border border-[#27272a] rounded-2xl space-y-4">
         <div className="flex items-center gap-2 mb-2">
           <Activity className="w-4 h-4 text-white animate-pulse" />
-          <h3 className="text-md font-bold font-display text-white">Emotional, Energy & Stress Telemetry</h3>
+          <h3 className="text-md font-bold font-display text-white">Emotional, Energy & Stress Trends</h3>
         </div>
 
         {formattedMoodTrends.length === 0 ? (
